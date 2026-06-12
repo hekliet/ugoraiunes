@@ -1,0 +1,1 @@
+enum { NMI, RESET, IRQ, BRK };
