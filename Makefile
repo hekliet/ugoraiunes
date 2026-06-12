@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS =
-LDLIBS =
+LDLIBS = -lSDL2
 
 SRCS = $(wildcard *.c)
 OBJS = $(SRCS:%.c=build/%.o)

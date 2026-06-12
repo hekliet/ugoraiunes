@@ -6,7 +6,7 @@
 #include "globals.h"
 
 #define push(v) write(0x100 | sp--, (v))
-#define pop() read(0x100 | ++sp)
+#define pop() cpu_read(0x100 | ++sp)
 #define push16(v)   \
     push((v) >> 8); \
     push((v) & 255)
@@ -16,12 +16,16 @@ uint8_t cart_read(uint16_t addr);
 uint16_t cart_read16(uint16_t addr);
 void cpu_tables_init(void);
 
+uint8_t ppu_reg_read(uint16_t addr);
+void ppu_reg_write(uint16_t addr, uint8_t v);
+
 extern void (*instrs[256])(void);
 extern void (*addrmodes[256])(void);
 extern uint8_t cycles_by_op[256];
 extern uint8_t page_cross_extras[256];
 
 uint8_t fi = 1;
+int cpu_extra_cycles;
 
 static uint8_t a, x, y, sp;
 static uint16_t pc;
@@ -31,14 +35,12 @@ static uint8_t ram[2048];
 
 static uint8_t op;
 static uint16_t arg;
-static int extra_cycles;
 
-static uint8_t read(uint16_t addr) {
+uint8_t cpu_read(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7ff];
 
     if (addr < 0x4000) {
-        // TODO: return ppu_read(addr & 7)
-        return 0;
+        return ppu_reg_read(addr & 7);
     }
 
     if (addr < 0x4015) return 0; /* open bus */
@@ -65,8 +67,7 @@ static void write(uint16_t addr, uint8_t val) {
     }
 
     if (addr < 0x4000) {
-        // TODO: ppu_write(addr & 7, val)
-        return;
+        ppu_reg_write(addr & 7, val);
     }
 
     if (addr < 0x4014 || addr == 0x4015 || addr == 0x4017) {
@@ -75,7 +76,7 @@ static void write(uint16_t addr, uint8_t val) {
     }
 
     if (addr == 0x4014) {
-        // TODO: write OAM DMA
+        ppu_reg_write(0x14, val);
         return;
     }
 
@@ -87,15 +88,14 @@ static void write(uint16_t addr, uint8_t val) {
     assert(0);
 }
 
-static uint16_t read16(uint16_t addr) { return read(addr) | (read(addr + 1) << 8); }
+static uint16_t read16(uint16_t addr) { return cpu_read(addr) | (cpu_read(addr + 1) << 8); }
 
 int cpu_step(void) {
-    printf("%04x\n", pc);
-    op = read(pc++);
+    op = cpu_read(pc++);
     addrmodes[op]();
     instrs[op]();
-    int cycles = cycles_by_op[op] + extra_cycles;
-    extra_cycles = 0;
+    int cycles = cycles_by_op[op] + cpu_extra_cycles;
+    cpu_extra_cycles = 0;
     return cycles;
 }
 
@@ -150,7 +150,7 @@ static uint16_t pop16() {
 
 void inx(void) { update_zn(++x); }
 void inc(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     write(arg, ++v);
     update_zn(v);
@@ -167,7 +167,7 @@ void adc(void) {
     fv = sign_olda == sign_arg && sign_a != sign_arg;
 }
 void asl(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     fc = v >> 7;
     v <<= 1;
@@ -180,7 +180,7 @@ void asla(void) {
     update_zn(a);
 }
 void dec(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     write(arg, --v);
     update_zn(v);
@@ -189,7 +189,7 @@ void dex(void) { update_zn(--x); }
 void dey(void) { update_zn(--y); }
 void iny(void) { update_zn(++y); }
 void lsr(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     fc = v & 1;
     v >>= 1;
@@ -202,7 +202,7 @@ void lsra(void) {
     update_zn(a);
 }
 void rol(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     uint8_t oldc = fc;
     fc = v >> 7;
@@ -217,7 +217,7 @@ void rola(void) {
     update_zn(a);
 }
 void ror(void) {
-    uint8_t v = read(arg);
+    uint8_t v = cpu_read(arg);
     write(arg, v);  // dummy write in read-modify-write instructions
     uint8_t oldc = fc;
     fc = v & 1;
@@ -319,59 +319,59 @@ void ora(void) {
 }
 void bcc(void) {
     if (!fc) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bcs(void) {
     if (fc) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void beq(void) {
     if (fz) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bmi(void) {
     if (fn) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bne(void) {
     if (!fz) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bpl(void) {
     if (!fn) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bvc(void) {
     if (!fv) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void bvs(void) {
     if (fv) {
-        extra_cycles++;
+        cpu_extra_cycles++;
         pc = arg;
     } else
-        extra_cycles = 0;
+        cpu_extra_cycles = 0;
 }
 void jmp(void) { pc = arg; }
 void jsr(void) {
@@ -394,78 +394,78 @@ void inv(void) {
 }
 
 void implicit(void) {}
-void immediate_val(void) { arg = read(pc++); }
+void immediate_val(void) { arg = cpu_read(pc++); }
 void absolute_addr(void) {
     arg = read16(pc);
     pc += 2;
 }
 void absolute_val(void) {
     absolute_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
-void zeropage_addr(void) { arg = read(pc++); }
+void zeropage_addr(void) { arg = cpu_read(pc++); }
 void zeropage_val(void) {
     zeropage_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
 void relative_addr(void) {
-    int8_t offset = read(pc++);
+    int8_t offset = cpu_read(pc++);
     arg = pc + offset;
-    if (pc >> 8 != arg >> 8) extra_cycles = page_cross_extras[op];
+    if (pc >> 8 != arg >> 8) cpu_extra_cycles = page_cross_extras[op];
 }
 void indirect_addr(void) {
     uint16_t addr_lo = read16(pc);
     pc += 2;
     uint16_t addr_hi = (addr_lo & 255) == 255 ? (addr_lo & 0xff00) : (addr_lo + 1);
-    arg = (read(addr_hi) << 8) | read(addr_lo);
+    arg = (cpu_read(addr_hi) << 8) | cpu_read(addr_lo);
 }
-void indexed_zpx_addr(void) { arg = (x + read(pc++)) & 255; }
+void indexed_zpx_addr(void) { arg = (x + cpu_read(pc++)) & 255; }
 void indexed_zpx_val(void) {
     indexed_zpx_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
-void indexed_zpy_addr(void) { arg = (y + read(pc++)) & 255; }
+void indexed_zpy_addr(void) { arg = (y + cpu_read(pc++)) & 255; }
 void indexed_zpy_val(void) {
     indexed_zpy_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
 void indexed_absx_addr(void) {
     uint16_t abs = read16(pc);
     pc += 2;
     arg = x + abs;
-    if (abs >> 8 != arg >> 8) extra_cycles = page_cross_extras[op];
+    if (abs >> 8 != arg >> 8) cpu_extra_cycles = page_cross_extras[op];
 }
 void indexed_absx_val(void) {
     indexed_absx_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
 void indexed_absy_addr(void) {
     uint16_t abs = read16(pc);
     pc += 2;
     arg = y + abs;
-    if (abs >> 8 != arg >> 8) extra_cycles = page_cross_extras[op];
+    if (abs >> 8 != arg >> 8) cpu_extra_cycles = page_cross_extras[op];
 }
 void indexed_absy_val(void) {
     indexed_absy_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
 void indexed_indirect_addr(void) {
-    uint8_t addr_lo = x + read(pc++);
+    uint8_t addr_lo = x + cpu_read(pc++);
     uint8_t addr_hi = addr_lo + 1;
-    arg = (read(addr_hi) << 8) | read(addr_lo);
+    arg = (cpu_read(addr_hi) << 8) | cpu_read(addr_lo);
 }
 void indexed_indirect_val(void) {
     indexed_indirect_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }
 void indirect_indexed_addr(void) {
-    uint8_t addr_lo = read(pc++);
+    uint8_t addr_lo = cpu_read(pc++);
     uint8_t addr_hi = addr_lo + 1;
-    uint16_t base = (read(addr_hi) << 8) | read(addr_lo);
+    uint16_t base = (cpu_read(addr_hi) << 8) | cpu_read(addr_lo);
     arg = y + base;
-    if (base >> 8 != arg >> 8) extra_cycles = page_cross_extras[op];
+    if (base >> 8 != arg >> 8) cpu_extra_cycles = page_cross_extras[op];
 }
 void indirect_indexed_val(void) {
     indirect_indexed_addr();
-    arg = read(arg);
+    arg = cpu_read(arg);
 }

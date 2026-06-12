@@ -3,10 +3,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "globals.h"
+
 int uses_chrram;
 
 static int prg_pages, chr_pages;
-static int vmirror, mapper;
+static int vmirror, alternative_nametable_layout, mapper;
 static uint8_t *prg, *chr;
 
 static void cart_free(void) {
@@ -27,6 +29,7 @@ void cart_load(const char *path) {
     uses_chrram = chr_pages == 0;
     uint8_t b = fgetc(f);
     vmirror = b & 1;
+    alternative_nametable_layout = (b >> 3) & 1;
     mapper = fgetc(f) | (b >> 4);
     fprintf(stderr, "%dx16k PRG, %dx8k CHR, mapper %d, hard-vmirror: %s\n", prg_pages, chr_pages,
             mapper, vmirror ? "yes" : "no");
@@ -46,3 +49,8 @@ uint8_t cart_read(uint16_t addr) {
 }
 
 uint16_t cart_read16(uint16_t addr) { return cart_read(addr) | (cart_read(addr + 1) << 8); }
+
+mirroring_t cart_nametable_mirroring(void) {
+    if (alternative_nametable_layout) return FOUR_SCREEN;
+    return vmirror ? VERTICAL : HORIZONTAL;
+}
