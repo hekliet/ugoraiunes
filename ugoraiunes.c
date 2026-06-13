@@ -18,7 +18,6 @@ void *presentation_start(void *);
 
 extern uint8_t fi;
 extern volatile int presentation_sentinel;
-extern uint32_t render_pixels[256 * 240];
 
 int nmi_pending, irq_pending;
 

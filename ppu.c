@@ -11,11 +11,10 @@ uint8_t cpu_read(uint16_t addr);
 void render_bg(unsigned y);
 void render_spr(unsigned y);
 void presentation_refresh_keys(void);
-void presentation_blit(uint32_t *pixels);
 
 extern int cpu_extra_cycles;
 extern int nmi_pending;
-extern uint32_t render_pixels[256 * 240];
+extern int render_back, render_third;
 
 enum { CTRL, MASK, STATUS, OAMADDR, OAMDATA, SCROLL, ADDR, DATA, OAMDMA = 0x14 };
 
@@ -56,7 +55,9 @@ void on_vblank_line(void) {
         ppu_status.f.vblank = 1;
         if (ppu_ctrl.f.vblank_ena) nmi_pending = 1;
         presentation_refresh_keys();
-        presentation_blit(render_pixels);
+        int t = render_back;
+        render_back = render_third;
+        render_third = t;
     }
 }
 
@@ -101,7 +102,7 @@ uint8_t ppu_read(uint16_t addr) {
 
 static void ppu_write(uint16_t addr, uint8_t v) {
     if (addr < 0x2000) {
-        fprintf(stderr, "Attempted unsupported CHR-RAM write.");
+        fprintf(stderr, "Attempted unsupported CHR-RAM write.\n");
         return;
     }
 
