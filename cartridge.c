@@ -44,8 +44,9 @@ void cart_load(const char *path) {
 
 uint8_t cart_read(uint16_t addr) {
     if (addr & 0x8000) return prg[addr & (prg_pages == 2 ? 0x7fff : 0x3fff)];
-    assert(addr < 0x2000);
-    return chr[addr];
+    // assert(addr < 0x2000);
+    if (addr < 0x2000) return chr[addr];
+    return 0;
 }
 
 uint16_t cart_read16(uint16_t addr) { return cart_read(addr) | (cart_read(addr + 1) << 8); }

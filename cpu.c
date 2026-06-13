@@ -23,6 +23,7 @@ extern void (*instrs[256])(void);
 extern void (*addrmodes[256])(void);
 extern uint8_t cycles_by_op[256];
 extern uint8_t page_cross_extras[256];
+extern uint8_t presentation_keys[8];
 
 uint8_t fi = 1;
 int cpu_extra_cycles;
@@ -35,6 +36,8 @@ static uint8_t ram[2048];
 
 static uint8_t op;
 static uint16_t arg;
+
+static unsigned joy_strobe, joy_idx;
 
 uint8_t cpu_read(uint16_t addr) {
     if (addr < 0x2000) return ram[addr & 0x7ff];
@@ -51,7 +54,11 @@ uint8_t cpu_read(uint16_t addr) {
     }
 
     if (addr == 0x4016 || addr == 0x4017) {
-        // TODO: return joypad data
+        if (addr == 0x4016) {
+            if (joy_strobe) return presentation_keys[0];
+            if (joy_idx < 8) return presentation_keys[joy_idx++];
+            return 1;
+        }
         return 0;
     }
 
@@ -81,7 +88,8 @@ static void write(uint16_t addr, uint8_t val) {
     }
 
     if (addr == 0x4016) {
-        // TODO: write joypad strobe
+        joy_strobe = val & 1;
+        joy_idx = 0;
         return;
     }
 

@@ -9,7 +9,8 @@ uint8_t cart_read(uint16_t addr);
 mirroring_t cart_nametable_mirroring(void);
 uint8_t cpu_read(uint16_t addr);
 void render_bg(unsigned y);
-// void render_spr(unsigned y);
+void render_spr(unsigned y);
+void presentation_refresh_keys(void);
 
 extern int cpu_extra_cycles;
 extern int nmi_pending;
@@ -55,6 +56,7 @@ void on_vblank_line(void) {
     if (cycle == 1) {
         ppu_status.f.vblank = 1;
         if (ppu_ctrl.f.vblank_ena) nmi_pending = 1;
+        presentation_refresh_keys();
     }
 }
 

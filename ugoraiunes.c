@@ -2,6 +2,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "globals.h"
@@ -14,7 +15,7 @@ void ppu_init(void);
 void ppu_step(void);
 
 void *presentation_start(void *);
-void presentation_blit(uint32_t *pixels);
+int presentation_blit(uint32_t *pixels);
 
 extern uint8_t fi;
 extern volatile int presentation_sentinel;
@@ -44,8 +45,7 @@ void main(int argc, char **argv) {
             ppu_step();  // may set nmi_pending
         }
         if (ppu_frame_ready) {
-            ppu_frame_ready = 0;
-            presentation_blit(render_pixels);
+            ppu_frame_ready = presentation_blit(render_pixels);
         }
 
         float apu_cycles_f = .5f * cpu_cycles;

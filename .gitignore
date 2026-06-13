@@ -1,4 +1,6 @@
 build
+docs
+roms
 nestest*
 out.txt
 *.asm
