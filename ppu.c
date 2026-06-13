@@ -23,10 +23,10 @@ ppu_mask_t ppu_mask;
 ppu_status_t ppu_status;
 uint8_t oam_addr;
 uint8_t ppu_scroll_x, ppu_scroll_y;
+uint8_t ppu_oam[256];
 
 static uint8_t vram[4096];
 static uint8_t palette[32];
-static uint8_t oam[256];
 static mirroring_t mirroring;
 static uint16_t ppu_address;
 static uint8_t ppu_scroll_latch;
@@ -47,7 +47,7 @@ void on_pre_line(void) {
 void on_visible_line(void) {
     if (!cycle) {
         render_bg(scanline);
-        // render_spr(scanline);
+        render_spr(scanline);
     }
 }
 
@@ -132,7 +132,7 @@ uint8_t ppu_reg_read(uint16_t addr) {
             ppu_scroll_latch = 0;
             return oldvalue;
         case OAMDATA:
-            return oam[oam_addr];
+            return ppu_oam[oam_addr];
         case DATA:
             uint8_t data = ppu_data_buffer;
             ppu_data_buffer = ppu_read(ppu_address & 0x3fff);
@@ -159,7 +159,7 @@ void ppu_reg_write(uint16_t addr, uint8_t v) {
             oam_addr = v;
             break;
         case OAMDATA:
-            oam[oam_addr++] = v;
+            ppu_oam[oam_addr++] = v;
             break;
         case SCROLL:
             if (ppu_scroll_latch)
@@ -181,7 +181,7 @@ void ppu_reg_write(uint16_t addr, uint8_t v) {
             break;
         case OAMDMA:
             uint16_t addr = v << 8;
-            for (int i = 0; i < 256; i++) oam[i] = cpu_read(addr++);
+            for (int i = 0; i < 256; i++) ppu_oam[i] = cpu_read(addr++);
             cpu_extra_cycles += 513;
             break;
     }

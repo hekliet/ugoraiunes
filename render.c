@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "ppu_regs.h"
 
@@ -9,12 +10,29 @@ uint8_t ppu_read(uint16_t addr);
 
 extern ppu_ctrl_t ppu_ctrl;
 extern ppu_mask_t ppu_mask;
+extern ppu_status_t ppu_status;
 extern uint8_t ppu_scroll_x, ppu_scroll_y;
+
+extern uint8_t ppu_oam[256];
 
 uint32_t render_pixels[256 * 240];
 
+typedef struct {
+    uint8_t y;
+    uint8_t tile;
+    uint8_t palette : 2;
+    uint8_t         : 3;
+    uint8_t behind  : 1;
+    uint8_t hflip   : 1;
+    uint8_t vflip   : 1;
+    uint8_t x;
+} oam_sprite_t;
+
 static uint8_t tile_slice[8];
 static uint8_t color_indices[256 * 240];
+static oam_sprite_t *sprites = (oam_sprite_t *)ppu_oam;
+static unsigned buf_col[256];
+static int8_t buf_spi[256];
 
 static void prep_tile(unsigned ptntable_id, unsigned tile_id, unsigned tile_y) {
     uint16_t table_addr = ptntable_id * 0x1000;
@@ -65,5 +83,71 @@ void render_bg(unsigned y) {
             plot_bg(x + xx, y, colour, colidx);
         }
         x += tile_pixels;
+    }
+}
+
+int evaluate(int8_t *sprlist, unsigned y, unsigned height) {
+    oam_sprite_t *sp = sprites;
+    int idx = 0;
+    for (int si = 0; si < 64; si++, sp++) {
+        int dy = y - sp->y - 1;
+        if (!(dy >= 0 && dy < height)) continue;
+        if (idx < 8)
+            sprlist[idx++] = si;
+        else {
+            ppu_status.f.spr_overflow = 1;
+            break;
+        }
+    }
+    return idx - 1;
+}
+
+void render_spr(unsigned y) {
+    if (!ppu_mask.f.spr_ena) return;
+    uint8_t sprlist[8];
+    unsigned tall = ppu_ctrl.f.spr_size;
+    unsigned height = 8 << tall;
+    int maxidx = evaluate(sprlist, y, height);
+    if (maxidx < 0) return;
+    memset(buf_spi, -1, 256);
+    for (int i = maxidx; i >= 0; i--) {
+        int spi = sprlist[i];
+        oam_sprite_t *sp = sprites + spi;
+        unsigned spry = y - sp->y - 1;
+        unsigned tiley = spry & 7;
+        unsigned ptntable = tall ? (sp->tile & 1) : ppu_ctrl.f.spr_ptntable;
+        unsigned tile = sp->tile + ((spry > 8) ^ (tall & sp->vflip));
+        prep_tile(ptntable, tile, sp->vflip ? (7 - tiley) : tiley);
+        unsigned x = sp->x;
+        int sprx_flipped, sprx_flipped_inc;
+        if (sp->hflip) {
+            sprx_flipped = 7;
+            sprx_flipped_inc = -1;
+        } else {
+            sprx_flipped = 0;
+            sprx_flipped_inc = 1;
+        }
+        for (unsigned sprx = 0; sprx < 8; sprx++, x++, sprx_flipped += sprx_flipped_inc) {
+            if (x > 255) break;
+            if (!ppu_mask.f.show_leftmost_spr && x < 8) continue;
+            uint8_t colidx = tile_slice[sprx_flipped];
+            if (colidx) {
+                uint8_t v1 = 12 - 4 * colidx;
+                uint8_t v2 = 15 - 4 * colidx;
+                v1 = (v1 << 4) | v1;
+                v2 = (v2 << 4) | v2;
+                unsigned colour = (v1 << 16) | (v2 << 8) | v1;
+                buf_spi[x] = spi;
+                buf_col[x] = colour;
+                if (spi == 0 && ppu_mask.f.bg_ena && color_indices[(y << 8) | x])
+                    ppu_status.f.spr_0hit = 1;
+            }
+        }
+    }
+    for (unsigned x = 0; x < 256; x++) {
+        if (buf_spi[x] < 0) continue;
+        oam_sprite_t *sp = sprites + buf_spi[x];
+        unsigned idx = (y << 8) | x;
+        if (!sp->behind || !color_indices[idx]) render_pixels[idx] = buf_col[x];
     }
 }

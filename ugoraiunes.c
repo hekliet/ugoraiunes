@@ -11,6 +11,7 @@ void cart_load(const char *path);
 int cpu_interrupt(int type);
 int cpu_step(void);
 void ppu_init(void);
+void ppu_step(void);
 
 void *presentation_start(void *);
 void presentation_blit(uint32_t *pixels);
