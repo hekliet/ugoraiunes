@@ -15,7 +15,6 @@ void ppu_init(void);
 void ppu_step(void);
 
 void *presentation_start(void *);
-int presentation_blit(uint32_t *pixels);
 
 extern uint8_t fi;
 extern volatile int presentation_sentinel;
