@@ -31,17 +31,16 @@ void *presentation_start(void *) {
     return NULL;
 }
 
-int presentation_blit(uint32_t *pixels) {
+void presentation_blit(uint32_t *pixels) {
     static uint64_t last_tick = 0;
-    uint64_t now = SDL_GetTicks64();
-    while (now - last_tick < 16) now = SDL_GetTicks64();
-    last_tick = now;
     SDL_Surface *nessu =
         SDL_CreateRGBSurfaceFrom(pixels, 256, 240, 32, 1024, 0xff0000, 0xff00, 0xff, 0);
     SDL_BlitScaled(nessu, NULL, winsu, NULL);
     SDL_UpdateWindowSurface(win);
     SDL_FreeSurface(nessu);
-    return 0;
+    uint64_t now = SDL_GetTicks64();
+    while (now - last_tick < 16) now = SDL_GetTicks64();
+    last_tick = now;
 }
 
 void presentation_refresh_keys(void) {

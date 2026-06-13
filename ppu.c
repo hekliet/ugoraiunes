@@ -11,11 +11,11 @@ uint8_t cpu_read(uint16_t addr);
 void render_bg(unsigned y);
 void render_spr(unsigned y);
 void presentation_refresh_keys(void);
+void presentation_blit(uint32_t *pixels);
 
 extern int cpu_extra_cycles;
 extern int nmi_pending;
-
-int ppu_frame_ready;
+extern uint32_t render_pixels[256 * 240];
 
 enum { CTRL, MASK, STATUS, OAMADDR, OAMDATA, SCROLL, ADDR, DATA, OAMDMA = 0x14 };
 
@@ -56,6 +56,7 @@ void on_vblank_line(void) {
         ppu_status.f.vblank = 1;
         if (ppu_ctrl.f.vblank_ena) nmi_pending = 1;
         presentation_refresh_keys();
+        presentation_blit(render_pixels);
     }
 }
 
@@ -68,10 +69,7 @@ void ppu_step(void) {
         on_vblank_line();
     if (++cycle == 341) {
         cycle = 0;
-        if (++scanline == 261) {
-            scanline = -1;
-            ppu_frame_ready = 1;  // nulled in main loop
-        }
+        if (++scanline == 261) scanline = -1;
     }
 }
 

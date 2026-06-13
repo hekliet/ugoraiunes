@@ -19,7 +19,6 @@ int presentation_blit(uint32_t *pixels);
 
 extern uint8_t fi;
 extern volatile int presentation_sentinel;
-extern int ppu_frame_ready;
 extern uint32_t render_pixels[256 * 240];
 
 int nmi_pending, irq_pending;
@@ -43,9 +42,6 @@ void main(int argc, char **argv) {
     while (running && !presentation_sentinel) {
         for (int i = 0; i < 3 * cpu_cycles; i++) {
             ppu_step();  // may set nmi_pending
-        }
-        if (ppu_frame_ready) {
-            ppu_frame_ready = presentation_blit(render_pixels);
         }
 
         float apu_cycles_f = .5f * cpu_cycles;
