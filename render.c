@@ -11,8 +11,8 @@ extern ppu_ctrl_t ppu_ctrl;
 extern ppu_mask_t ppu_mask;
 extern ppu_status_t ppu_status;
 extern uint8_t ppu_scroll_x, ppu_scroll_y;
-
 extern uint8_t ppu_oam[256];
+extern const unsigned rgbpalette[64];
 
 uint32_t render_pixels[256 * 240];
 
@@ -46,15 +46,44 @@ static void prep_tile(unsigned ptntable_id, unsigned tile_id, unsigned tile_y) {
     }
 }
 
+unsigned apply_emph(unsigned colour) {
+    unsigned r = colour >> 16;
+    unsigned g = (colour >> 8) & 255;
+    unsigned b = colour & 255;
+    if (ppu_mask.f.greyscale) r = g = b = (r + g + b) / 3;
+    if (ppu_mask.f.emph_r || ppu_mask.f.emph_g || ppu_mask.f.emph_b) {
+        unsigned all = ppu_mask.f.emph_r && ppu_mask.f.emph_g && ppu_mask.f.emph_b;
+        if (all || ppu_mask.f.emph_r) r = (192 * r) >> 8;
+        if (all || ppu_mask.f.emph_g) g = (192 * g) >> 8;
+        if (all || ppu_mask.f.emph_b) b = (192 * b) >> 8;
+    }
+    return (r << 16) | (g << 8) | b;
+}
+
 static void plot_bg(unsigned x, unsigned y, unsigned colour, uint8_t colindex) {
     unsigned idx = (y << 8) | x;
     color_indices[idx] = colindex;
-    render_pixels[idx] = colour;
+    render_pixels[idx] = apply_emph(colour);
+}
+
+unsigned bg_palette(unsigned nametable, unsigned x, unsigned y) {
+    uint16_t meta_base = 0x2000 + 0x400 * nametable + 960;
+    uint16_t meta_idx = meta_base + ((y >> 5) << 3) | (x >> 5);
+    unsigned meta = ppu_read(meta_idx);
+    unsigned mx = x & 31;
+    unsigned my = y & 31;
+    unsigned block = ((my >> 4) << 1) | (mx >> 4);
+    return (meta >> (block << 1)) & 3;
+}
+
+unsigned get_colour(unsigned palette, unsigned colidx, unsigned is_sprite) {
+    uint16_t base = 0x3f00 | (is_sprite ? 0x10 : 0) | (palette << 2);
+    return rgbpalette[ppu_read(base | colidx)];
 }
 
 void render_bg(unsigned y) {
     unsigned ptntable_id = ppu_ctrl.f.bg_ptntable;
-    uint32_t bgcolor = 0xcccccc;
+    uint32_t bgcolor = get_colour(0, 0, 0);
     unsigned scrolled_y = y + ppu_scroll_y;
     unsigned nametable_y = scrolled_y % 240;
     unsigned tile_y = nametable_y & 7;
@@ -69,6 +98,7 @@ void render_bg(unsigned y) {
         unsigned tile_pixels = MIN(8 - tile_x, 256 - x);
         uint16_t nametable_idx = nametable_addr + ((nametable_y >> 3) << 5) + (nametable_x >> 3);
         unsigned tile_id = ppu_read(nametable_idx);
+        unsigned palette = bg_palette(nametable_id, nametable_x, nametable_y);
         prep_tile(ptntable_id, tile_id, tile_y);
         for (unsigned xx = 0; xx < tile_pixels; xx++) {
             if (!ppu_mask.f.bg_ena || (x + xx < 8 && !ppu_mask.f.show_leftmost_bg)) {
@@ -76,9 +106,7 @@ void render_bg(unsigned y) {
                 continue;
             }
             uint8_t colidx = tile_slice[tile_x + xx];
-            uint8_t v = 12 - 4 * colidx;
-            v = (v << 4) | v;
-            unsigned colour = (v << 16) | (v << 8) | v;
+            unsigned colour = colidx ? get_colour(palette, colidx, 0) : bgcolor;
             plot_bg(x + xx, y, colour, colidx);
         }
         x += tile_pixels;
@@ -116,6 +144,8 @@ void render_spr(unsigned y) {
         unsigned tiley = spry & 7;
         unsigned ptntable = tall ? (sp->tile & 1) : ppu_ctrl.f.spr_ptntable;
         unsigned tile = sp->tile + ((spry > 8) ^ (tall & sp->vflip));
+        unsigned rgbcols[4] = {get_colour(sp->palette, 0, 1), get_colour(sp->palette, 1, 1),
+                               get_colour(sp->palette, 2, 1), get_colour(sp->palette, 3, 1)};
         prep_tile(ptntable, tile, sp->vflip ? (7 - tiley) : tiley);
         unsigned x = sp->x;
         int sprx_flipped, sprx_flipped_inc;
@@ -131,13 +161,8 @@ void render_spr(unsigned y) {
             if (!ppu_mask.f.show_leftmost_spr && x < 8) continue;
             uint8_t colidx = tile_slice[sprx_flipped];
             if (colidx) {
-                uint8_t v1 = 12 - 4 * colidx;
-                uint8_t v2 = 15 - 4 * colidx;
-                v1 = (v1 << 4) | v1;
-                v2 = (v2 << 4) | v2;
-                unsigned colour = (v1 << 16) | (v2 << 8) | v1;
                 buf_spi[x] = spi;
-                buf_col[x] = colour;
+                buf_col[x] = rgbcols[colidx];
                 if (spi == 0 && ppu_mask.f.bg_ena && color_indices[(y << 8) | x])
                     ppu_status.f.spr_0hit = 1;
             }
@@ -147,6 +172,6 @@ void render_spr(unsigned y) {
         if (buf_spi[x] < 0) continue;
         oam_sprite_t *sp = sprites + buf_spi[x];
         unsigned idx = (y << 8) | x;
-        if (!sp->behind || !color_indices[idx]) render_pixels[idx] = buf_col[x];
+        if (!sp->behind || !color_indices[idx]) render_pixels[idx] = apply_emph(buf_col[x]);
     }
 }
