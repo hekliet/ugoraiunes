@@ -39,7 +39,6 @@ void ppu_init(void) {
 }
 
 void on_pre_line(void) {
-    if (!ppu_mask.f.bg_ena && !ppu_mask.f.spr_ena) return;
     if (cycle == 1) {
         ppu_status.value = 0;
     }
@@ -149,6 +148,10 @@ uint8_t ppu_reg_read(uint16_t addr) {
 void ppu_reg_write(uint16_t addr, uint8_t v) {
     switch (addr) {
         case CTRL:
+            // preserve base_nametable bits (0-1) when rendering is off
+            if (!ppu_mask.f.bg_ena && !ppu_mask.f.spr_ena) {
+                v = (v & 0xFC) | (ppu_ctrl.value & 3);
+            }
             ppu_ctrl.value = v;
             break;
         case MASK:
