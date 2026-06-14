@@ -8,6 +8,9 @@
 
 #include "globals.h"
 
+#define NES_CYCLES_PER_FRAME_SHL10 30495232
+#define SILENCE_NUMBYTES (((102 * HOST_SAMPLE_RATE) >> 8) & 0xFFFFFFF8)
+
 void cpu_tables_init(void);
 void cart_load(const char *path);
 int cpu_interrupt(int type);
@@ -76,6 +79,12 @@ void main(int argc, char **argv) {
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, presentation_start, NULL);
 
+    {
+        float silence[SILENCE_NUMBYTES >> 2] = {0};
+        while (SDL_GetQueuedAudioSize(audio_dev) < SILENCE_NUMBYTES)
+            SDL_QueueAudio(audio_dev, silence, SILENCE_NUMBYTES);
+    }
+
     signal(SIGINT, handle_sigint);
     cpu_tables_init();
     cart_load(argv[1]);
@@ -85,13 +94,12 @@ void main(int argc, char **argv) {
     uint64_t perf_freq = SDL_GetPerformanceFrequency();
     uint64_t next_frame_incr = (double)perf_freq / 60.0988;
     uint64_t next_frame = SDL_GetPerformanceCounter();
-
     int cycle_count = 0;
     struct timespec ts = {.tv_sec = 0};
 
     while (running && !presentation_sentinel) {
-        while (cycle_count < 29780) cycle_count += step();
-        cycle_count -= 29780;
+        while (cycle_count < NES_CYCLES_PER_FRAME_SHL10) cycle_count += step() << 10;
+        cycle_count -= NES_CYCLES_PER_FRAME_SHL10;
         next_frame += next_frame_incr;
 
         if (sample_count > 0) {

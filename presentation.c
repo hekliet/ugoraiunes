@@ -18,7 +18,7 @@ void *presentation_start(void *unused) {
     renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
     SDL_Texture *texture =
         SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STREAMING, 256, 240);
-    SDL_AudioSpec want = {44100, AUDIO_F32LSB, 1, 0, 4096, 0, 0, NULL, NULL};
+    SDL_AudioSpec want = {HOST_SAMPLE_RATE, AUDIO_F32LSB, 1, 0, 4096, 0, 0, NULL, NULL};
     audio_dev = SDL_OpenAudioDevice(NULL, 0, &want, NULL, 0);
     SDL_PauseAudioDevice(audio_dev, 0);
 
