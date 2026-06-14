@@ -14,8 +14,7 @@ extern uint8_t ppu_scroll_x, ppu_scroll_y;
 extern uint8_t ppu_oam[256];
 extern const unsigned rgbpalette[64];
 
-uint32_t render_pixels[3][256 * 240];
-int render_front, render_back = 1, render_third = 2;
+uint32_t render_pixels[256 * 240];
 
 typedef struct {
     uint8_t y;
@@ -64,7 +63,7 @@ unsigned apply_emph(unsigned colour) {
 static void plot_bg(unsigned x, unsigned y, unsigned colour, uint8_t colindex) {
     unsigned idx = (y << 8) | x;
     color_indices[idx] = colindex;
-    render_pixels[render_third][idx] = apply_emph(colour);
+    render_pixels[idx] = apply_emph(colour);
 }
 
 unsigned bg_palette(unsigned nametable, unsigned x, unsigned y) {
@@ -173,7 +172,6 @@ void render_spr(unsigned y) {
         if (buf_spi[x] < 0) continue;
         oam_sprite_t *sp = sprites + buf_spi[x];
         unsigned idx = (y << 8) | x;
-        if (!sp->behind || !color_indices[idx])
-            render_pixels[render_third][idx] = apply_emph(buf_col[x]);
+        if (!sp->behind || !color_indices[idx]) render_pixels[idx] = apply_emph(buf_col[x]);
     }
 }
